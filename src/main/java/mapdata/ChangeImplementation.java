@@ -1,25 +1,23 @@
 package mapdata;
 
-import genericnode.GenericNode;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class ChangeImplementation extends UnicastRemoteObject implements ChangeInterface {
+public class ChangeImplementation extends UnicastRemoteObject {
     private final ConcurrentHashMap<String, Lock> keyLocks = new ConcurrentHashMap<>();
     private final static int MAX_STORE_LENGTH = 65000;
+    private static ConcurrentHashMap<String,String> map = new ConcurrentHashMap();
 
     public ChangeImplementation() throws RemoteException {
         super();
     }
 
-    @Override
-    public String changeData(String valuestring, String type) throws RemoteException {
+    public String changeData(String valuestring) throws RemoteException {
         String[] parts = valuestring.split(" ");
         String operation = parts[0];
         String key = parts.length > 1 ? parts[1] : null;
@@ -27,10 +25,19 @@ public class ChangeImplementation extends UnicastRemoteObject implements ChangeI
         StringBuilder response = new StringBuilder();
 
         switch (operation) {
+            case "dput1":
+            //placeholder for dput1
+                keyLocks.computeIfAbsent(key, k -> new ReentrantLock()).lock();
+                try {
+                    map.put(key, value);
+                    response.append("put key=").append(key);
+                } finally {
+                    keyLocks.get(key).unlock();
+                }
+                break;
             case "put":
                 keyLocks.computeIfAbsent(key, k -> new ReentrantLock()).lock();
                 try {
-                    ConcurrentHashMap<String, String> map = getMap(type);
                     map.put(key, value);
                     response.append("put key=").append(key);
                 } finally {
@@ -38,16 +45,15 @@ public class ChangeImplementation extends UnicastRemoteObject implements ChangeI
                 }
                 break;
             case "get":
-                response.append("get key=").append(key).append(" get val=").append(getMap(type).get(key));
+                response.append("get key=").append(key).append(" get val=").append(map.get(key));
                 break;
             case "del":
-                getMap(type).remove(key);
+                map.remove(key);
                 response.append("delete key=").append(key);
                 break;
             case "store":
                 List<String> entries = new ArrayList<>();
-                Map<String, String> currentMap = getMap(type);
-                currentMap.forEach((k, v) -> {
+                map.forEach((k, v) -> {
                     entries.add("key:" + k + ":value:" + v);
                 });
                 for (String entry : entries) {
@@ -60,41 +66,10 @@ public class ChangeImplementation extends UnicastRemoteObject implements ChangeI
                 }
                 break;
             case "exit":
-                if (type.equals("rmi")) {
-                    response.append("server shutting down");
-                    gracefulExit();
-                    break;
-                }
-                else {
-                    response.append("server shutting down");
-                    System.exit(0);
-                    break;
-                }
+                response.append("server shutting down");
+                System.exit(0);
+                break;
         }
         return response.toString();
     }
-
-    private static void gracefulExit() {
-        try {
-            GenericNode.registry.unbind(GenericNode.serviceString);
-            UnicastRemoteObject.unexportObject(GenericNode.change, true);
-            //UnicastRemoteObject.unexportObject(GenericNode.registry, true);
-        }
-        catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private ConcurrentHashMap<String, String> getMap(String type) {
-        if ("rmi".equals(type)) {
-            return Mapdata.rmimap;
-        } else if ("tcp".equals(type)) {
-            return Mapdata.tcpmap;
-        } else if ("udp".equals(type)) {
-            return Mapdata.udpmap;
-        } else {
-            throw new IllegalArgumentException("Unknown type: " + type);
-        }
-    }
-
 }

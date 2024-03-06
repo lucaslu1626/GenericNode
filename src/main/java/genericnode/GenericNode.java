@@ -6,13 +6,9 @@
 package genericnode;
 
 import mapdata.ChangeImplementation;
-import mapdata.ChangeInterface;
 
 import java.io.*;
 import java.net.*;
-import java.rmi.Naming;
-import java.rmi.NotBoundException;
-import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.util.AbstractMap.SimpleEntry;
 
@@ -22,44 +18,12 @@ import java.util.AbstractMap.SimpleEntry;
 public class GenericNode {
     public static Registry registry;
     public static String serviceString = "ChangeService";
-    public static ChangeInterface change;
 
     /**
      * @param args the command line arguments
      */
     public static void main(String[] args) throws IOException {
         if (args.length > 0) {
-            if (args[0].equals("rmis")) {
-                System.out.println("RMI SERVER");
-                try {
-                    // insert code to start RMI Server
-                    try {
-                        change = new ChangeImplementation();
-                        registry = LocateRegistry.createRegistry(1099);
-                        registry.rebind(serviceString, change);
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-            if (args[0].equals("rmic")) {
-                System.out.println("RMI CLIENT");
-                String addr = args[1];
-                String cmd = args[2];
-                String key = (args.length > 3) ? args[3] : "";
-                String val = (args.length > 4) ? args[4] : "";
-                // insert code to make RMI client request
-                try {
-                    ChangeInterface changeService = (ChangeInterface) Naming
-                            .lookup("rmi://" + addr + "/" + serviceString);
-                    String message = changeService.changeData(cmd + " " + key + " " + val, "rmi");
-                    System.out.println(message);
-                } catch (NotBoundException e) {
-                    e.printStackTrace();
-                }
-            }
             if (args[0].equals("tc")) {
                 System.out.println("TCP CLIENT");
                 String addr = args[1];
@@ -86,7 +50,7 @@ public class GenericNode {
             }
             if (args[0].equals("ts")) {
                 System.out.println("TCP SERVER");
-                ChangeInterface changeServer = new ChangeImplementation();
+                ChangeImplementation changeServer = new ChangeImplementation();
                 int port = Integer.parseInt(args[1]);
                 String message = null;
                 // insert code to start TCP server on port
@@ -97,7 +61,7 @@ public class GenericNode {
                                 BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()))) {
                             String inputLine = in.readLine();
                             if (inputLine != null) {
-                                message = changeServer.changeData(inputLine, "tcp") + "\n";
+                                message = changeServer.changeData(inputLine) + "\n";
                                 out.write(message.getBytes());
                                 out.flush();  
                             }
@@ -109,61 +73,6 @@ public class GenericNode {
                     e.printStackTrace();
                 }
             }
-            if (args[0].equals("uc")) {
-                System.out.println("UDP CLIENT");
-                String addr = args[1];
-                int sendport = Integer.parseInt(args[2]);
-                int recvport = sendport + 1;
-                String cmd = args[3];
-                String key = (args.length > 4) ? args[4] : "";
-                String val = (args.length > 5) ? args[5] : "";
-                SimpleEntry<String, String> se = new SimpleEntry<String, String>(key, val);
-                // insert code to make UDP client request to server at addr:send/recvport
-                DatagramSocket socket = new DatagramSocket();
-                InetAddress targetAddress = InetAddress.getByName(addr);
-                String message = cmd + " " + key + " " + val;
-                byte[] sendData = message.getBytes();
-                try {
-                    DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, targetAddress, sendport);
-                    socket.send(sendPacket);
-                    if (!cmd.equals("exit")) {
-                        byte[] receiveData = new byte[1024000];
-                        DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
-                        socket.receive(receivePacket);
-                        String responseMessage = new String(receivePacket.getData(), 0, receivePacket.getLength());
-                        System.out.println(responseMessage);
-                    }
-                } catch (IOException e) {
-                    e.printStackTrace();
-                } finally {
-                    socket.close();
-                }
-            }
-            if (args[0].equals("us")) {
-                System.out.println("UDP SERVER");
-                ChangeInterface changeServer = new ChangeImplementation();
-                int port = Integer.parseInt(args[1]);
-                String message = null;
-                // insert code to start UDP server on port
-                try (DatagramSocket socket = new DatagramSocket(port)) {
-                    while (true) {
-                        byte[] receiveData = new byte[1024000];
-                        DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
-                        socket.receive(receivePacket);
-                        String clientMessage = new String(receivePacket.getData(), 0, receivePacket.getLength());
-                        message = changeServer.changeData(clientMessage, "udp");
-                        InetAddress clientAddress = receivePacket.getAddress();
-                        int clientPort = receivePacket.getPort();
-                        byte[] messageData = message.getBytes();
-                        DatagramPacket sendPacket = new DatagramPacket(messageData, messageData.length, clientAddress,
-                                clientPort);
-                        socket.send(sendPacket);
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-
         } else {
             String msg = "GenericNode Usage:\n\n" +
                     "Client:\n" +
