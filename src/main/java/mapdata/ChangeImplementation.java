@@ -51,8 +51,26 @@ public class ChangeImplementation extends UnicastRemoteObject implements ChangeI
                 response.append("get key=").append(key).append(" get val=").append(getMap(type).get(key));
                 break;
             case "del":
+                // for each ip address, port in the membership list send ddel1 message
+                // getMap(type).remove(key);
+                //response.append("delete key=").append(key);
+                break;
+            case "ddel1":
+                if (keyLocks.containsKey(key)) {
+                    // abort the delete
+                    response.append("ddelabort");
+                }
+                keyLocks.computeIfAbsent(key, k -> new ReentrantLock()).lock();
+                break;
+            case "ddel2":
                 getMap(type).remove(key);
+                keyLocks.get(key).unlock();
+                keyLocks.remove(key);
                 response.append("delete key=").append(key);
+                break;
+            case "ddelabort":
+                keyLocks.get(key).unlock();
+                response.append("delete key=").append(key).append(" aborted");
                 break;
             case "store":
                 List<String> entries = new ArrayList<>();
