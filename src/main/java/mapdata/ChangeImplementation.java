@@ -1,7 +1,5 @@
 package mapdata;
 
-import java.rmi.RemoteException;
-import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -9,16 +7,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class ChangeImplementation extends UnicastRemoteObject implements ChangeInterface {
+public class ChangeImplementation implements ChangeInterface {
     private final ConcurrentHashMap<String, Lock> keyLocks = new ConcurrentHashMap<>();
     private final static int MAX_STORE_LENGTH = 65000;
 
-    public ChangeImplementation() throws RemoteException {
+    public ChangeImplementation() {
         super();
     }
 
     @Override
-    public String changeData(String valuestring, String type) throws RemoteException {
+    public String changeData(String valuestring, String type) {
         String[] parts = valuestring.split(" ");
         String operation = parts[0];
         String key = parts.length > 1 ? parts[1] : null;
@@ -27,15 +25,39 @@ public class ChangeImplementation extends UnicastRemoteObject implements ChangeI
 
         switch (operation) {
             case "dput1":
-                //Placeholders for the dput1 operations
-                keyLocks.computeIfAbsent(key, k -> new ReentrantLock()).lock();
+                Lock lock = keyLocks.computeIfAbsent(key, k -> new ReentrantLock());
+                if (lock.tryLock()) {
+                    response.append("Acknowledgement: key=").append(key).append(" is locked for dput1 and ready to proceed to commit the PUT operation");
+                } else {
+                    response.append("Abort: key=").append(key).append(" is already locked locally and the transaction will be aborted");
+                }
+                break;
+            case "dput2":
                 try {
                     ConcurrentHashMap<String, String> map = getMap(type);
                     map.put(key, value);
                     response.append("put key=").append(key);
                 } finally {
-                    keyLocks.get(key).unlock();
+                    Lock lock2 = keyLocks.get(key);
+                    if (lock2 != null) {
+                        lock2.unlock();
+                    }
                 }
+                break;
+            case "dputabort":
+                Lock genericLock = keyLocks.get(key);
+                if (genericLock instanceof ReentrantLock) {
+                    ReentrantLock lock3 = (ReentrantLock) genericLock;
+                    if (lock3.isHeldByCurrentThread()) {
+                        lock3.unlock();
+                        keyLocks.remove(key);
+                        response.append("Abort: key=").append(key).append(" is unlocked and the transaction is aborted");
+                    } else {
+                        response.append("Current thread does not hold the lock for key=").append(key);
+                    }
+                } else {
+                    response.append("No transaction is found or already aborted for key=").append(key);
+                }           
                 break;
             case "put":
                 keyLocks.computeIfAbsent(key, k -> new ReentrantLock()).lock();
