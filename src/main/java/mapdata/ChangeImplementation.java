@@ -19,6 +19,7 @@ public class ChangeImplementation extends UnicastRemoteObject implements ChangeI
     private final static int MAX_STORE_LENGTH = 65000;
     private final static String MEMBERSHIP_SERVER_ADDR = "127.0.0.1";
     private final static int MEMBERSHIP_SERVER_PORT = 4410;
+    private final static int MAX_TRANSACTION_ATTEMPTS = 10;
     private Map<String, String> membershipMap = new HashMap<>();
     private String addr = "";
     private int port = 0;
@@ -60,12 +61,20 @@ public class ChangeImplementation extends UnicastRemoteObject implements ChangeI
             case "get":
                 response.append("get key=").append(key).append(" get val=").append(getMap(type).get(key));
                 break;
-            case "keymap":
-                response.append("keymap ").append(getMap(type).entrySet());
-                break;
             case "del":
-                String deleteResult = handleClientDelete(key, membershipMap);
-                response.append(deleteResult);
+                int deleteAttempts = 0;
+                while (deleteAttempts <= MAX_TRANSACTION_ATTEMPTS) {
+                    String deleteResult = handleClientDelete(key, type, membershipMap);
+                    if (deleteResult.equals("delete key=" + key)) {
+                        response.append(deleteResult);
+                        break;
+                    } else {
+                        deleteAttempts++;
+                    }
+                }
+                if (deleteAttempts > MAX_TRANSACTION_ATTEMPTS) {
+                    response.append("delete key=").append(key).append(" aborted");
+                }
                 break;
             case "ddel1":
                 String ddel1Result = handleDeletePhaseOne(key);
@@ -118,42 +127,50 @@ public class ChangeImplementation extends UnicastRemoteObject implements ChangeI
             }
         }
     }
-    private String handleClientDelete(String key, Map<String, String> membershipMap) {
+    private String handleClientDelete(String key, String serverType, Map<String, String> membershipMap) {
         // for each ip address, port in the membership list send ddel1 message
         // getMap(type).remove(key);
         //response.append("delete key=").append(key);
         Boolean abort = false;
         String res = "";
-        for (String ip : membershipMap.keySet()) {
-            try {
-                // send ddel1 message to ip:port
-                String port = membershipMap.get(ip);
-                // send ddel1 message to ip:port
-                Socket socket = new Socket(ip, Integer.parseInt(port));
-                System.out.println("Sending ddel1 message to " + ip + ":" + port);
-                PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-                BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                out.println("ddel1 " + key);
-                //if any server responds with ddelabort, then send ddelabort message to all servers from the membershipMap
-                String serverAck = in.readLine();
-                if (serverAck.equals("abort")) {
+        // check key is locked locally, then send ddel1 message to all servers from the membershipMap
+        if(!handleDeletePhaseOne(key).equals("abort")) {
+            for (String ip : membershipMap.keySet()) {
+                try {
+                    // send ddel1 message to ip:port
+                    String port = membershipMap.get(ip);
+                    // send ddel1 message to ip:port
+                    Socket socket = new Socket(ip, Integer.parseInt(port));
+                    System.out.println("Sending ddel1 message to " + ip + ":" + port);
+                    PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+                    BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                    out.println("ddel1 " + key);
+                    //if any server responds with ddelabort, then send ddelabort message to all servers from the membershipMap
+                    String serverAck = in.readLine();
+                    if (serverAck.equals("abort")) {
+                        abort = true;
+                        System.out.println("Received abort message from " + ip + ":" + port);
+                        res = "Delete abort";
+                        sendAbortToAllServers(key);
+                    } 
+                    
+                    System.out.println(serverAck.equals("ok " + key));
+                    
+                    socket.close();
+                } catch (Exception e) {
                     abort = true;
-                    System.out.println("Received abort message from " + ip + ":" + port);
-                    res = "Delete abort";
-                    sendAbortToAllServers(key);
-                } 
-                
-                System.out.println(serverAck.equals("ok " + key));
-                
-                socket.close();
-            } catch (Exception e) {
-                abort = true;
-                e.printStackTrace();
-                break;
+                    e.printStackTrace();
+                    break;
+                }
             }
+        } else {
+            abort = true;
+            res = "abort";
         }
-        //if all servers respond with ok, then send ddel2 message to all servers from the membershipMap 
+        //if all servers respond with ok, delete <key, value> locally,
+        // then send ddel2 message to all servers from the membershipMap 
         if (!abort) {
+            handleDeletePhaseTwo(key, serverType);
             for (String ip : membershipMap.keySet()) {
                 try {
                     // send ddel1 message to ip:port
