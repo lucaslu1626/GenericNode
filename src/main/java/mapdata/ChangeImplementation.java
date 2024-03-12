@@ -63,7 +63,7 @@ public class ChangeImplementation extends UnicastRemoteObject implements ChangeI
                 break;
             case "del":
                 int deleteAttempts = 0;
-                while (deleteAttempts <= MAX_TRANSACTION_ATTEMPTS) {
+                while (deleteAttempts < MAX_TRANSACTION_ATTEMPTS) {
                     String deleteResult = handleClientDelete(key, type, membershipMap);
                     if (deleteResult.equals("delete key=" + key)) {
                         response.append(deleteResult);
@@ -72,8 +72,8 @@ public class ChangeImplementation extends UnicastRemoteObject implements ChangeI
                         deleteAttempts++;
                     }
                 }
-                if (deleteAttempts > MAX_TRANSACTION_ATTEMPTS) {
-                    response.append("delete key=").append(key).append(" aborted");
+                if (deleteAttempts  == MAX_TRANSACTION_ATTEMPTS) {
+                    response.append("delete key=").append(key).append(" aborted after ").append(deleteAttempts).append(" attempts");
                 }
                 break;
             case "ddel1":
@@ -232,6 +232,25 @@ public class ChangeImplementation extends UnicastRemoteObject implements ChangeI
         res = "delete key=" +key +" aborted";
         return res;
 
+    }
+
+    private void updateMembershipMap() {
+        try {
+            // send getmembers message to MEMBERSHIP_SERVER_ADDR:MEMBERSHIP_SERVER_PORT
+            Socket socket = new Socket(MEMBERSHIP_SERVER_ADDR, MEMBERSHIP_SERVER_PORT);
+            PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            out.println("getmembers");
+            String response = in.readLine();
+            String[] members = response.split(",");
+            for (String member : members) {
+                String[] parts = member.split(":");
+                membershipMap.put(parts[0], parts[1]);
+            }
+            socket.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private ConcurrentHashMap<String, String> getMap(String type) {
