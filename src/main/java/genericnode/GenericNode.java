@@ -10,16 +10,38 @@ import mapdata.ChangeInterface;
 
 import java.io.*;
 import java.net.*;
-import java.rmi.registry.Registry;
+import java.util.concurrent.*;
 import java.util.AbstractMap.SimpleEntry;
 
 /**
  * @author wlloyd
  */
 public class GenericNode {
-    public static Registry registry;
     public static String serviceString = "ChangeService";
     public static ChangeInterface change;
+    private final static int MEMBERSHIP_SERVER_PORT = 4410;
+
+    private static void registerWithTCPMembershipServer(String membershipServerIP, int membershipPort) {
+        try (Socket socket = new Socket(membershipServerIP, membershipPort);
+             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+            out.println("register " + membershipServerIP + " " + membershipPort);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void fetchNodeList(String membershipServerIP) {
+        try (Socket socket = new Socket(membershipServerIP, MEMBERSHIP_SERVER_PORT);
+             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))){
+            out.println("list");
+            String response = in.readLine();
+            System.out.println(response);
+        } catch (IOException e) {
+            e.printStackTrace();  
+        }
+    }
 
     /**
      * @param args the command line arguments
@@ -51,6 +73,12 @@ public class GenericNode {
                 }
             }
             if (args[0].equals("ts")) {
+                if (args.length > 2 ) {
+                    String membershipServerIP = args[2];
+                    int membershipPort = Integer.parseInt(args[1]);
+                    registerWithTCPMembershipServer(membershipServerIP, membershipPort);
+                    Executors.newScheduledThreadPool(1).scheduleAtFixedRate(() -> fetchNodeList(membershipServerIP), 0, 10, TimeUnit.SECONDS);
+                }
                 System.out.println("TCP SERVER");
                 ChangeInterface changeServer = new ChangeImplementation();
                 int port = Integer.parseInt(args[1]);

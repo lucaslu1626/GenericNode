@@ -1,6 +1,7 @@
 package mapdata;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -10,6 +11,11 @@ import java.util.concurrent.locks.ReentrantLock;
 public class ChangeImplementation implements ChangeInterface {
     private final ConcurrentHashMap<String, Lock> keyLocks = new ConcurrentHashMap<>();
     private final static int MAX_STORE_LENGTH = 65000;
+
+    private final static int MAX_TRANSACTION_ATTEMPTS = 10;
+    private Map<String, String> memberMap = new HashMap<>();
+    private String addr;
+    private int port;
 
     public ChangeImplementation() {
         super();
