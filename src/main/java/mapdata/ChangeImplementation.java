@@ -23,8 +23,9 @@ public class ChangeImplementation extends UnicastRemoteObject implements ChangeI
     private Map<String, String> membershipMap = new HashMap<>();
     private String addr = "";
     private int port = 0;
-    public ChangeImplementation() throws RemoteException {
+    public ChangeImplementation(int port ) throws RemoteException {
         super();
+        this.port = port;
     }
 
     @Override
