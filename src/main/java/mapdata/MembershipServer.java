@@ -61,6 +61,9 @@ public class MembershipServer {
                 }
                 out.println(response.toString());
                 break;
+            case "exit":
+                System.exit(0);
+                break;
             default:
                 out.println("Unknown command: " + command);
                 break;
