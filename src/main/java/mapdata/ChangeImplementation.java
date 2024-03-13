@@ -363,8 +363,12 @@ public class ChangeImplementation implements ChangeInterface {
             String[] lines = response.split("\n");
             for (String line : lines) {
                 String[] parts = line.split(":");
+                String myIP = InetAddress.getLocalHost().getHostAddress();
                 if (parts.length == 4 && parts[0].equals("key") && parts[2].equals("value")) {
-                    memberMap.put(parts[1], parts[3]);
+                    if (!parts[1].equals(myIP) || !parts[3].equals(String.valueOf(this.port))) {
+
+                        memberMap.put(parts[1], parts[3]);
+                    }
                 }
             }
         } catch (Exception e) {
