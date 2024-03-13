@@ -4,5 +4,6 @@ RUN apt-get install -y default-jre
 RUN apt-get install -y net-tools
 COPY GenericNode.jar /
 COPY runserver.sh /
+COPY ./tmp/nodes.cfg /tmp/
 ENTRYPOINT ["/runserver.sh"]
 

@@ -21,7 +21,7 @@ public class ChangeImplementation implements ChangeInterface {
     private final String membershipServerAddr;
     private final static int MAX_TRANSACTION_ATTEMPTS = 10;
     private final int port;
-    private ConcurrentHashMap<String, String> memberMap = new ConcurrentHashMap<String, String>();
+    protected static ConcurrentHashMap<String, String> memberMap = new ConcurrentHashMap<String, String>();
 
     public ChangeImplementation(int port, String membershipServerAddr) {
         this.membershipServerAddr = membershipServerAddr;
