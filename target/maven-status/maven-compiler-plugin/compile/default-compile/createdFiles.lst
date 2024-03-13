@@ -1,4 +1,5 @@
 mapdata/ChangeInterface.class
+mapdata/MembershipServer.class
 genericnode/GenericNode.class
 mapdata/Mapdata.class
 mapdata/ChangeImplementation.class
