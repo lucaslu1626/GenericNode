@@ -81,14 +81,17 @@ public class GenericNode {
                 if (args.length > 2) {
                     String membershipServerIP = args[2];
                     int membershipServerPort = MEMBERSHIP_SERVER_PORT;
-                    ChangeInterface changeServer = new ChangeImplementation(membershipServerIP);
+                    ChangeInterface changeServer = new ChangeImplementation(port, membershipServerIP);
                     registerWithTCPMembershipServer(membershipServerIP, membershipServerPort, port);
                     Executors.newScheduledThreadPool(1).scheduleAtFixedRate(
                             () -> fetchNodeList(membershipServerIP, membershipServerPort, changeServer), 0, 10,
                             TimeUnit.SECONDS);
                     startTCPServer(port, changeServer);
-                } else {
+                } else if (port == MEMBERSHIP_SERVER_PORT){
                     MembershipServer.startMembershipServer(port);
+                } else {
+                    ChangeInterface change = new ChangeImplementation(port, "");
+                    startTCPServer(port, change);
                 }
             }
         } else {

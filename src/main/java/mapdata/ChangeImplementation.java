@@ -1,9 +1,11 @@
 package mapdata;
 
 import java.io.BufferedReader;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.InetAddress;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -18,10 +20,18 @@ public class ChangeImplementation implements ChangeInterface {
     private final static int MAX_STORE_LENGTH = 65000;
     private final String membershipServerAddr;
     private final static int MAX_TRANSACTION_ATTEMPTS = 10;
-    protected static ConcurrentHashMap<String, String> memberMap = new ConcurrentHashMap<String, String>();
+    private final int port;
+    private ConcurrentHashMap<String, String> memberMap = new ConcurrentHashMap<String, String>();
 
-    public ChangeImplementation(String membershipServerAddr) {
+    public ChangeImplementation(int port, String membershipServerAddr) {
         this.membershipServerAddr = membershipServerAddr;
+        this.port = port;
+        if (membershipServerAddr != null && membershipServerAddr.length() > 0){
+
+        } else {
+            updateMemberMapFromFile();
+
+        }
     }
 
     @Override
@@ -31,6 +41,7 @@ public class ChangeImplementation implements ChangeInterface {
         String key = parts.length > 1 ? parts[1] : null;
         String value = parts.length > 2 ? parts[2] : null;
         StringBuilder response = new StringBuilder();
+
         switch (operation) {
             case "dput1":
                 String dput1String = handlePutPhaseOne(key);
@@ -111,7 +122,7 @@ public class ChangeImplementation implements ChangeInterface {
                 response.append("server shutting down");
                 System.exit(0);
                 break;
-        }
+            }
         return response.toString();
     }
 
@@ -198,6 +209,7 @@ public class ChangeImplementation implements ChangeInterface {
         String res = "";
         Lock lock = keyLocks.computeIfAbsent(key, k -> new ReentrantLock());
         if (lock.tryLock()) {
+            
             res = "ok " + key;
         } else {
             res = "abort";
@@ -323,7 +335,7 @@ public class ChangeImplementation implements ChangeInterface {
     private String handleDeletePhaseTwo(String key, String type) {
         String res = "";
         System.out.println("Received ddel2 message for key=" + key + " deleting");
-        keyLocks.get(key).unlock();
+        //keyLocks.get(key).unlock();
         getMap(type).remove(key);
         Lock lock = keyLocks.get(key);
         if (lock != null) {
@@ -361,6 +373,35 @@ public class ChangeImplementation implements ChangeInterface {
             e.printStackTrace();
         }
     }
+
+    private void updateMemberMapFromFile() {
+        Thread updateThread = new Thread(() -> {
+            while (true) {
+                memberMap.clear();
+                try (BufferedReader br = new BufferedReader(new FileReader("../tmp/nodes.cfg"))) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        String[] addressAndPort = line.split(":");
+                        String address = addressAndPort[0];
+                        String sourcePort = addressAndPort[1];
+                        String myIP = InetAddress.getLocalHost().getHostAddress();
+                        if (!address.equals(myIP) || !sourcePort.equals(String.valueOf(this.port))) {
+                            memberMap.put(address, sourcePort);
+                            // print out the membership list
+                            System.out.println("Membership list: " + memberMap);
+                        }
+                    }
+                    
+                    Thread.sleep(10000);
+                } catch (Exception e) {
+                    Thread.currentThread().interrupt();
+                    e.printStackTrace();
+                }
+                
+            }
+        });
+        updateThread.start();
+    }   
 
     private ConcurrentHashMap<String, String> getMap(String type) {
         if ("tcp".equals(type)) {
