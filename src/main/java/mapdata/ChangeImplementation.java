@@ -180,7 +180,7 @@ public class ChangeImplementation implements ChangeInterface {
             handlePutAbort(key);
             return res;
         } else {
-            handlePutPhaseTwo(key, value, serverType);
+            res = handlePutPhaseTwo(key, value, serverType);
             for (Map.Entry<String, String> entry : membershipMap.entrySet()) {
                 String ip = entry.getKey();
                 String port = entry.getValue();
@@ -219,8 +219,10 @@ public class ChangeImplementation implements ChangeInterface {
         String res = "";
         try {
             ConcurrentHashMap<String, String> map = getMap(serverType);
-            map.put(key, value);
-            res = "put key=" + key;
+            if (key != null && value != null) {
+                map.put(key, value);
+                res = "put key=" + key;
+            }
         } finally {
             Lock lock2 = keyLocks.get(key);
             if (lock2 != null) {
@@ -291,7 +293,7 @@ public class ChangeImplementation implements ChangeInterface {
             handleDeleteAbort(key);
             return res;
         } else {
-            handleDeletePhaseTwo(key, serverType);
+            res = handleDeletePhaseTwo(key, serverType);
             for (Map.Entry<String, String> entry : membershipMap.entrySet()) {
                 String ip = entry.getKey();
                 String port = entry.getValue();
@@ -384,13 +386,16 @@ public class ChangeImplementation implements ChangeInterface {
                     String line;
                     while ((line = br.readLine()) != null) {
                         String[] addressAndPort = line.split(":");
-                        String address = addressAndPort[0];
-                        String sourcePort = addressAndPort[1];
-                        String myIP = InetAddress.getLocalHost().getHostAddress();
-                        if (!address.equals(myIP) || !sourcePort.equals(String.valueOf(this.port))) {
-                            memberMap.put(address, sourcePort);
-                            // print out the membership list
-                            System.out.println("Membership list: " + memberMap);
+                        if (addressAndPort.length == 2) {
+                            String address = addressAndPort[0];
+                            String sourcePort = addressAndPort[1];
+                            String myIP = InetAddress.getLocalHost().getHostAddress();
+                            if (!address.equals(myIP) || !sourcePort.equals(String.valueOf(this.port))) {
+                                memberMap.put(address, sourcePort);
+                                // print out the membership list
+                                System.out.println("Membership list: " + memberMap);
+                            }
+
                         }
                     }
                     
