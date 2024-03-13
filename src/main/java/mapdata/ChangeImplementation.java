@@ -26,12 +26,10 @@ public class ChangeImplementation implements ChangeInterface {
     public ChangeImplementation(int port, String membershipServerAddr) {
         this.membershipServerAddr = membershipServerAddr;
         this.port = port;
-        if (membershipServerAddr != null && membershipServerAddr.length() > 0){
-
-        } else {
+        if (membershipServerAddr != null && membershipServerAddr.length() == 0){
             updateMemberMapFromFile();
-
         }
+
     }
 
     @Override
