@@ -1,8 +1,10 @@
 package mapdata;
 
 import java.io.BufferedReader;
+import java.io.FileReader;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.InetAddress;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -22,9 +24,10 @@ public class ChangeImplementation implements ChangeInterface {
     private String addr;
     private int port;
 
-    public ChangeImplementation() {
+    public ChangeImplementation(int port) {
         super();
-        //this.port = port;
+        this.port = port;
+        updateMemberMapFromFile();
     }
 
     @Override
@@ -34,8 +37,15 @@ public class ChangeImplementation implements ChangeInterface {
         String key = parts.length > 1 ? parts[1] : null;
         String value = parts.length > 2 ? parts[2] : null;
         StringBuilder response = new StringBuilder();
-        memberMap.put("127.0.0.1", "1235");
+        //memberMap.put("127.0.0.1", "1235");
         switch (operation) {
+            case "membership":
+                // print the membership list
+                response.append("Membership list: ");
+                for (String ip : memberMap.keySet()) {
+                    response.append(ip).append(":").append(memberMap.get(ip)).append(" ");
+                }
+                break;
             case "dput1":
                 Lock lock = keyLocks.computeIfAbsent(key, k -> new ReentrantLock());
                 if (lock.tryLock()) {
@@ -258,23 +268,38 @@ public class ChangeImplementation implements ChangeInterface {
 
     }
 
-    private void updateMembershipMap() {
-        try {
-            // send getmembers message to MEMBERSHIP_SERVER_ADDR:MEMBERSHIP_SERVER_PORT
-            Socket socket = new Socket(MEMBERSHIP_SERVER_ADDR, MEMBERSHIP_SERVER_PORT);
-            PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            out.println("getmembers");
-            String response = in.readLine();
-            String[] members = response.split(",");
-            for (String member : members) {
-                String[] parts = member.split(":");
-                memberMap.put(parts[0], parts[1]);
+    private void updateMemberMapFromFile() {
+        Thread updateThread = new Thread(() -> {
+            while (true) {
+                memberMap.clear();
+                try {
+                    // Read membership list from file: /tmp/nodes.cfg
+                    BufferedReader reader = new BufferedReader(new FileReader("../tmp/nodes.cfg"));
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        // Process each line of the file
+                        // Update memberMap accordingly
+                        String[] addressAndPort = line.split(":");
+                        String address = addressAndPort[0];
+                        String port = addressAndPort[1];
+                        InetAddress myAddress = InetAddress.getLocalHost();
+                        String myIp = myAddress.getHostAddress();
+                        System.out.println("My IP: " + myIp + " My Port: " + this.port);
+                        if (!address.equals(myIp) || !port.equals(Integer.toString(this.port))) {
+                            System.out.println("Adding " + address + ":" + port + " to memberMap");
+                            memberMap.put(address, port);
+                        }
+                    }
+                    reader.close();
+                    
+                    Thread.sleep(10000);
+                } catch (Exception e) {
+                    Thread.currentThread().interrupt();
+                    e.printStackTrace();
+                }
             }
-            socket.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        });
+        updateThread.start();
     }
 
     private ConcurrentHashMap<String, String> getMap(String type) {

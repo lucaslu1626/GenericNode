@@ -82,7 +82,7 @@ public class GenericNode {
                 System.out.println("TCP SERVER");
                 
                 int port = Integer.parseInt(args[1]);
-                ChangeInterface changeServer = new ChangeImplementation();
+                ChangeInterface changeServer = new ChangeImplementation(port);
                 String message = null;
                 // insert code to start TCP server on port
                 try (ServerSocket serverSocket = new ServerSocket(port)) {
@@ -138,7 +138,7 @@ public class GenericNode {
             if (args[0].equals("us")) {
                 System.out.println("UDP SERVER");
                 int port = Integer.parseInt(args[1]);
-                ChangeInterface changeServer = new ChangeImplementation();
+                ChangeInterface changeServer = new ChangeImplementation(port);
 
                 String message = null;
                 // insert code to start UDP server on port
