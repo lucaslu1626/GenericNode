@@ -7,6 +7,7 @@ package genericnode;
 
 import mapdata.ChangeImplementation;
 import mapdata.ChangeInterface;
+import mapdata.MembershipServer;
 
 import java.io.*;
 import java.net.*;
@@ -21,25 +22,28 @@ public class GenericNode {
     public static ChangeInterface change;
     private final static int MEMBERSHIP_SERVER_PORT = 4410;
 
-    private static void registerWithTCPMembershipServer(String membershipServerIP, int membershipPort) {
+    public static void registerWithTCPMembershipServer(String membershipServerIP, int membershipPort) {
         try (Socket socket = new Socket(membershipServerIP, membershipPort);
-             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
-            out.println("register " + membershipServerIP + " " + membershipPort);
+                PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+                BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+            out.println("register " + InetAddress.getLocalHost().getHostAddress() + " " + membershipPort);
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private static void fetchNodeList(String membershipServerIP) {
-        try (Socket socket = new Socket(membershipServerIP, MEMBERSHIP_SERVER_PORT);
-             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))){
-            out.println("list");
-            String response = in.readLine();
-            System.out.println(response);
+    private static void fetchNodeList(String membershipServerIP, int membershipServerPort,
+            ChangeInterface changeServer) {
+        try (Socket socket = new Socket(membershipServerIP, membershipServerPort);
+                PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+                BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+            out.println("store");
+            String response;
+            while ((response = in.readLine()) != null) {
+                changeServer.updateTCPMembershipMap(response);
+            }
         } catch (IOException e) {
-            e.printStackTrace();  
+            e.printStackTrace();
         }
     }
 
@@ -71,112 +75,48 @@ public class GenericNode {
                 } finally {
                     socket.close();
                 }
-            }
-            if (args[0].equals("ts")) {
-                if (args.length > 2 ) {
+            } else if (args[0].equals("ts")) {
+                int port = Integer.parseInt(args[1]);
+                if (args.length > 2) {
                     String membershipServerIP = args[2];
-                    int membershipPort = Integer.parseInt(args[1]);
-                    registerWithTCPMembershipServer(membershipServerIP, membershipPort);
-                    Executors.newScheduledThreadPool(1).scheduleAtFixedRate(() -> fetchNodeList(membershipServerIP), 0, 10, TimeUnit.SECONDS);
-                }
-                System.out.println("TCP SERVER");
-                ChangeInterface changeServer = new ChangeImplementation();
-                int port = Integer.parseInt(args[1]);
-                String message = null;
-                // insert code to start TCP server on port
-                try (ServerSocket serverSocket = new ServerSocket(port)) {
-                    while (true) {
-                        try (Socket clientSocket = serverSocket.accept();
-                                OutputStream out = clientSocket.getOutputStream();
-                                BufferedReader in = new BufferedReader(
-                                        new InputStreamReader(clientSocket.getInputStream()))) {
-                            String inputLine = in.readLine();
-                            if (inputLine != null) {
-                                message = changeServer.changeData(inputLine, "tcp") + "\n";
-                                out.write(message.getBytes());
-                                out.flush();
-                            }
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        }
-                    }
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-            if (args[0].equals("uc")) {
-                System.out.println("UDP CLIENT");
-                String addr = args[1];
-                int sendport = Integer.parseInt(args[2]);
-                int recvport = sendport + 1;
-                String cmd = args[3];
-                String key = (args.length > 4) ? args[4] : "";
-                String val = (args.length > 5) ? args[5] : "";
-                SimpleEntry<String, String> se = new SimpleEntry<String, String>(key, val);
-                // insert code to make UDP client request to server at addr:send/recvport
-                DatagramSocket socket = new DatagramSocket();
-                InetAddress targetAddress = InetAddress.getByName(addr);
-                String message = cmd + " " + key + " " + val;
-                byte[] sendData = message.getBytes();
-                try {
-                    DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, targetAddress, sendport);
-                    socket.send(sendPacket);
-                    if (!cmd.equals("exit")) {
-                        byte[] receiveData = new byte[1024000];
-                        DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
-                        socket.receive(receivePacket);
-                        String responseMessage = new String(receivePacket.getData(), 0, receivePacket.getLength());
-                        System.out.println(responseMessage);
-                    }
-                } catch (IOException e) {
-                    e.printStackTrace();
-                } finally {
-                    socket.close();
-                }
-            }
-            if (args[0].equals("us")) {
-                System.out.println("UDP SERVER");
-                ChangeInterface changeServer = new ChangeImplementation();
-                int port = Integer.parseInt(args[1]);
-                String message = null;
-                // insert code to start UDP server on port
-                try (DatagramSocket socket = new DatagramSocket(port)) {
-                    while (true) {
-                        byte[] receiveData = new byte[1024000];
-                        DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
-                        socket.receive(receivePacket);
-                        String clientMessage = new String(receivePacket.getData(), 0, receivePacket.getLength());
-                        message = changeServer.changeData(clientMessage, "udp");
-                        InetAddress clientAddress = receivePacket.getAddress();
-                        int clientPort = receivePacket.getPort();
-                        byte[] messageData = message.getBytes();
-                        DatagramPacket sendPacket = new DatagramPacket(messageData, messageData.length, clientAddress,
-                                clientPort);
-                        socket.send(sendPacket);
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
+                    int membershipServerPort = MEMBERSHIP_SERVER_PORT;
+                    ChangeInterface changeServer = new ChangeImplementation(membershipServerIP);
+                    registerWithTCPMembershipServer(membershipServerIP, membershipServerPort);
+                    Executors.newScheduledThreadPool(1).scheduleAtFixedRate(
+                            () -> fetchNodeList(membershipServerIP, membershipServerPort, changeServer), 0, 10,
+                            TimeUnit.SECONDS);
+                    startTCPServer(port, changeServer);
+                } else {
+                    MembershipServer.startMembershipServer(port);
                 }
             }
         } else {
-            String msg = "GenericNode Usage:\n\n" +
-                    "Client:\n" +
-                    "uc/tc <address> <port> put <key> <msg>  UDP/TCP CLIENT: Put an object into store\n" +
-                    "uc/tc <address> <port> get <key>  UDP/TCP CLIENT: Get an object from store by key\n" +
-                    "uc/tc <address> <port> del <key>  UDP/TCP CLIENT: Delete an object from store by key\n" +
-                    "uc/tc <address> <port> store  UDP/TCP CLIENT: Display object store\n" +
-                    "uc/tc <address> <port> exit  UDP/TCP CLIENT: Shutdown server\n" +
-                    "rmic <address> put <key> <msg>  RMI CLIENT: Put an object into store\n" +
-                    "rmic <address> get <key>  RMI CLIENT: Get an object from store by key\n" +
-                    "rmic <address> del <key>  RMI CLIENT: Delete an object from store by key\n" +
-                    "rmic <address> store  RMI CLIENT: Display object store\n" +
-                    "rmic <address> exit  RMI CLIENT: Shutdown server\n\n" +
-                    "Server:\n" +
-                    "us/ts <port>  UDP/TCP SERVER: run udp or tcp server on <port>.\n" +
-                    "rmis  run RMI Server.\n";
-            System.out.println(msg);
+            System.out.println("Missing membership server IP");
+            System.exit(1);
         }
+    }
 
+    private static void startTCPServer(int port, ChangeInterface changeServer) {
+        System.out.println("TCP SERVER");
+        try (ServerSocket serverSocket = new ServerSocket(port)) {
+            while (true) {
+                try (Socket clientSocket = serverSocket.accept();
+                        OutputStream out = clientSocket.getOutputStream();
+                        BufferedReader in = new BufferedReader(
+                                new InputStreamReader(clientSocket.getInputStream()))) {
+                    String inputLine = in.readLine();
+                    if (inputLine != null) {
+                        String message = changeServer.changeData(inputLine, "tcp") + "\n";
+                        out.write(message.getBytes());
+                        out.flush();
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
 }
