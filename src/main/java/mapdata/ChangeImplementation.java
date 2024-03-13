@@ -17,9 +17,8 @@ public class ChangeImplementation implements ChangeInterface {
     private final ConcurrentHashMap<String, Lock> keyLocks = new ConcurrentHashMap<String, Lock>();
     private final static int MAX_STORE_LENGTH = 65000;
     private final String membershipServerAddr;
-    private final static int MEMBERSHIP_SERVER_PORT = 4410;
     private final static int MAX_TRANSACTION_ATTEMPTS = 10;
-    private ConcurrentHashMap<String, String> memberMap = new ConcurrentHashMap<String, String>();
+    protected static ConcurrentHashMap<String, String> memberMap = new ConcurrentHashMap<String, String>();
 
     public ChangeImplementation(String membershipServerAddr) {
         this.membershipServerAddr = membershipServerAddr;
@@ -177,7 +176,7 @@ public class ChangeImplementation implements ChangeInterface {
                 String ip = entry.getKey();
                 String port = entry.getValue();
                 try {
-                    // send dput1 message to ip:port
+                    // send dput2 message to ip:port
                     Socket socket = new Socket(ip, Integer.parseInt(port));
                     System.out.println("Sending dput2 message to " + ip + ":" + port);
                     PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
@@ -287,7 +286,7 @@ public class ChangeImplementation implements ChangeInterface {
                 String ip = entry.getKey();
                 String port = entry.getValue();
                 try {
-                    // send ddel1 message to ip:port
+                    // send ddel2 message to ip:port
                     Socket socket = new Socket(ip, Integer.parseInt(port));
                     System.out.println("Sending ddel2 message to " + ip + ":" + port);
                     PrintWriter out = new PrintWriter(socket.getOutputStream(), true);

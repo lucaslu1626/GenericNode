@@ -7,7 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class MembershipServer {
     private static final int MEMBERSHIP_SERVER_PORT = 4410;
-    private static ConcurrentHashMap<String, String> memberMap = new ConcurrentHashMap<>();
+    //private static ConcurrentHashMap<String, String> memberMap = new ConcurrentHashMap<>();
 
     public static void startMembershipServer(int port) {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
@@ -33,21 +33,21 @@ public class MembershipServer {
             case "put":
                 String ip = parts[1];
                 String port = parts[2];
-                memberMap.put(ip, port);
+                ChangeImplementation.memberMap.put(ip, port);
                 out.println("put key=" + ip);
                 break;
             case "get":
                 String key = parts[1];
-                String value = memberMap.get(key);
+                String value = ChangeImplementation.memberMap.get(key);
                 if (value != null) {
-                    out.println("get key=" + key + " get val=" + value);
+                    out.println("get key=" + key + " get value=" + value);
                 } else {
                     out.println("get key=" + key + " not found");
                 }
                 break;
             case "del":
                 String delKey = parts[1];
-                if (memberMap.remove(delKey) != null) {
+                if (ChangeImplementation.memberMap.remove(delKey) != null) {
                     out.println("delete key=" + delKey);
                 } else {
                     out.println("delete key=" + delKey + " not found");
@@ -55,9 +55,9 @@ public class MembershipServer {
                 break;
             case "store":
                 StringBuilder response = new StringBuilder();
-                for (Map.Entry<String, String> entry : memberMap.entrySet()) {
-                    response.append("ip:").append(entry.getKey())
-                            .append(":port:").append(entry.getValue()).append("\n");
+                for (Map.Entry<String, String> entry : ChangeImplementation.memberMap.entrySet()) {
+                    response.append("key:").append(entry.getKey())
+                            .append(":value:").append(entry.getValue()).append("\n");
                 }
                 out.println(response.toString());
                 break;

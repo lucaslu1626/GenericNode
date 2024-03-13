@@ -18,15 +18,16 @@ import java.util.AbstractMap.SimpleEntry;
  * @author wlloyd
  */
 public class GenericNode {
+
+    private static final int MEMBERSHIP_SERVER_PORT = 4410;
     public static String serviceString = "ChangeService";
     public static ChangeInterface change;
-    private final static int MEMBERSHIP_SERVER_PORT = 4410;
 
-    public static void registerWithTCPMembershipServer(String membershipServerIP, int membershipPort) {
-        try (Socket socket = new Socket(membershipServerIP, membershipPort);
+    public static void registerWithTCPMembershipServer(String membershipServerIP, int membershipServerPort, int membershipPort) {
+        try (Socket socket = new Socket(membershipServerIP, membershipServerPort);
                 PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
                 BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
-            out.println("register " + InetAddress.getLocalHost().getHostAddress() + " " + membershipPort);
+            out.println("put " + Inet4Address.getLocalHost().getHostAddress() + " " + membershipPort);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -81,7 +82,7 @@ public class GenericNode {
                     String membershipServerIP = args[2];
                     int membershipServerPort = MEMBERSHIP_SERVER_PORT;
                     ChangeInterface changeServer = new ChangeImplementation(membershipServerIP);
-                    registerWithTCPMembershipServer(membershipServerIP, membershipServerPort);
+                    registerWithTCPMembershipServer(membershipServerIP, membershipServerPort, port);
                     Executors.newScheduledThreadPool(1).scheduleAtFixedRate(
                             () -> fetchNodeList(membershipServerIP, membershipServerPort, changeServer), 0, 10,
                             TimeUnit.SECONDS);
