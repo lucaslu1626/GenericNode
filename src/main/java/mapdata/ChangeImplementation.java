@@ -14,12 +14,12 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class ChangeImplementation implements ChangeInterface {
-    private final ConcurrentHashMap<String, Lock> keyLocks = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Lock> keyLocks = new ConcurrentHashMap<String, Lock>();
     private final static int MAX_STORE_LENGTH = 65000;
     private final String membershipServerAddr;
     private final static int MEMBERSHIP_SERVER_PORT = 4410;
     private final static int MAX_TRANSACTION_ATTEMPTS = 10;
-    private ConcurrentHashMap<String, String> memberMap = new ConcurrentHashMap<>();
+    private ConcurrentHashMap<String, String> memberMap = new ConcurrentHashMap<String, String>();
 
     public ChangeImplementation(String membershipServerAddr) {
         this.membershipServerAddr = membershipServerAddr;
@@ -116,27 +116,32 @@ public class ChangeImplementation implements ChangeInterface {
         return response.toString();
     }
 
-    private void sendAbortToAllServers(String key) {
+    private void sendAbortToAllServers(String key, String operation) {
         memberMap.forEach((ip, port) -> {
             try (Socket socket = new Socket(ip, Integer.parseInt(port));
-                 PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-                 BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
-                out.println("ddelabort " + key);
+                    PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+                    BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+                if (operation.equals("put")) {
+                    out.println("dputabort " + key);
+                } else if (operation.equals("del")) {
+                    out.println("ddelabort " + key);
+                }
             } catch (IOException e) {
                 e.printStackTrace();
             }
         });
     }
 
-    private String handleClientPut(String key, String value, String serverType, ConcurrentHashMap<String, String> membershipMap) {
+    private String handleClientPut(String key, String value, String serverType,
+            ConcurrentHashMap<String, String> membershipMap) {
         Boolean abort = false;
         String res = "";
-        // check key is locked locally, then send dput1 message to all servers from the membershipMap
-        if (!handlePutPhaseOne(key).equals("abort")) {
-            for (String ip : membershipMap.keySet()) {
+        String lockResult = handlePutPhaseOne(key);
+        if (!lockResult.equals("abort")) {
+            for (Map.Entry<String, String> entry : membershipMap.entrySet()) {
+                String ip = entry.getKey();
+                String port = entry.getValue();
                 try {
-                    // send dput1 message to ip:port
-                    String port = membershipMap.get(ip);
                     // send dput1 message to ip:port
                     Socket socket = new Socket(ip, Integer.parseInt(port));
                     System.out.println("Sending dput1 message to " + ip + ":" + port);
@@ -148,9 +153,8 @@ public class ChangeImplementation implements ChangeInterface {
                     String serverAck = in.readLine();
                     if (serverAck.equals("abort")) {
                         abort = true;
-                        System.out.println("Received abort message from " + ip + ":" + port);
                         res = "Put abort";
-                        sendAbortToAllServers(key);
+                        sendAbortToAllServers(key, "put");
                     }
                     System.out.println(serverAck.equals("ok " + key));
                     socket.close();
@@ -164,14 +168,15 @@ public class ChangeImplementation implements ChangeInterface {
             abort = true;
             res = "abort";
         }
-        // if all servers respond with ok, put <key, value> locally,
-        // then send dput2 message to all servers from the membershipMap
-        if (!abort) {
+        if (abort) {
+            handlePutAbort(key);
+            return res;
+        } else {
             handlePutPhaseTwo(key, value, serverType);
-            for (String ip : membershipMap.keySet()) {
+            for (Map.Entry<String, String> entry : membershipMap.entrySet()) {
+                String ip = entry.getKey();
+                String port = entry.getValue();
                 try {
-                    // send dput1 message to ip:port
-                    String port = membershipMap.get(ip);
                     // send dput1 message to ip:port
                     Socket socket = new Socket(ip, Integer.parseInt(port));
                     System.out.println("Sending dput2 message to " + ip + ":" + port);
@@ -192,12 +197,10 @@ public class ChangeImplementation implements ChangeInterface {
 
     private String handlePutPhaseOne(String key) {
         String res = "";
-        System.out.println("Received dput1 message for key=" + key);
-        if (!keyLocks.containsKey(key) || keyLocks.get(key).tryLock()) {
-            System.out.println("Locking key=" + key);
+        Lock lock = keyLocks.computeIfAbsent(key, k -> new ReentrantLock());
+        if (lock.tryLock()) {
             res = "ok " + key;
         } else {
-            System.out.println("Received dput1 message for key=" + key + ", locked by others, aborting");
             res = "abort";
         }
         return res;
@@ -205,21 +208,34 @@ public class ChangeImplementation implements ChangeInterface {
 
     private String handlePutPhaseTwo(String key, String value, String serverType) {
         String res = "";
-        System.out.println("Received dput2 message for key=" + key + " putting");
-        getMap(serverType).put(key, value);
-        keyLocks.get(key).unlock();
-        res = "put key=" + key;
+        try {
+            ConcurrentHashMap<String, String> map = getMap(serverType);
+            map.put(key, value);
+            res = "put key=" + key;
+        } finally {
+            Lock lock2 = keyLocks.get(key);
+            if (lock2 != null) {
+                lock2.unlock();
+            }
+        }       
         return res;
     }
 
     private String handlePutAbort(String key) {
         String res = "";
         Lock lockedObject = keyLocks.get(key);
-        if (keyLocks.containsKey(key)) {
-            System.out.println("Received dputabort message for key=" + key + " unlocking");
-            lockedObject.unlock();
+        if (lockedObject instanceof ReentrantLock) {
+            ReentrantLock lock = (ReentrantLock) lockedObject;
+            if (lockedObject != null && lock.isHeldByCurrentThread()) {
+                lockedObject.unlock();
+                keyLocks.remove(key);
+                res = "put key=" + key + " aborted";
+            } else {
+                res = "Current thread does not hold the lock for key=" + key;         
+            }
+        } else {
+            res = "No transaction is found or already aborted for key=" + key;
         }
-        res = "put key=" + key + " aborted";
         return res;
     }
 
@@ -229,10 +245,10 @@ public class ChangeImplementation implements ChangeInterface {
         // check key is locked locally, then send ddel1 message to all servers from the
         // membershipMap
         if (!handleDeletePhaseOne(key).equals("abort")) {
-            for (String ip : membershipMap.keySet()) {
+            for (Map.Entry<String, String> entry : membershipMap.entrySet()) {
+                String ip = entry.getKey();
+                String port = entry.getValue();
                 try {
-                    // send ddel1 message to ip:port
-                    String port = membershipMap.get(ip);
                     // send ddel1 message to ip:port
                     Socket socket = new Socket(ip, Integer.parseInt(port));
                     System.out.println("Sending ddel1 message to " + ip + ":" + port);
@@ -246,7 +262,7 @@ public class ChangeImplementation implements ChangeInterface {
                         abort = true;
                         System.out.println("Received abort message from " + ip + ":" + port);
                         res = "Delete abort";
-                        sendAbortToAllServers(key);
+                        sendAbortToAllServers(key, "del");
                     }
 
                     System.out.println(serverAck.equals("ok " + key));
@@ -262,14 +278,15 @@ public class ChangeImplementation implements ChangeInterface {
             abort = true;
             res = "abort";
         }
-        // if all servers respond with ok, delete <key, value> locally,
-        // then send ddel2 message to all servers from the membershipMap
-        if (!abort) {
+        if (abort) {
+            handleDeleteAbort(key);
+            return res;
+        } else {
             handleDeletePhaseTwo(key, serverType);
-            for (String ip : membershipMap.keySet()) {
+            for (Map.Entry<String, String> entry : membershipMap.entrySet()) {
+                String ip = entry.getKey();
+                String port = entry.getValue();
                 try {
-                    // send ddel1 message to ip:port
-                    String port = membershipMap.get(ip);
                     // send ddel1 message to ip:port
                     Socket socket = new Socket(ip, Integer.parseInt(port));
                     System.out.println("Sending ddel2 message to " + ip + ":" + port);
@@ -291,17 +308,16 @@ public class ChangeImplementation implements ChangeInterface {
     private String handleDeletePhaseOne(String key) {
         String res = "";
         System.out.println("Received ddel1 message for key=" + key);
-        if (keyLocks.containsKey(key) && keyLocks.get(key).tryLock()) {
-
+        if (!keyLocks.containsKey(key)) {
+            keyLocks.put(key, new ReentrantLock());
+        }
+        if (keyLocks.get(key).tryLock()) {
             System.out.println("Locking key=" + key);
-            // keyLocks.computeIfAbsent(key, k -> new ReentrantLock()).lock();
             res = "ok " + key;
         } else {
-            // abort the delete
             System.out.println("Received ddel1 message for key=" + key + ", locked by others, aborting");
             res = "abort";
         }
-
         return res;
     }
 
@@ -310,23 +326,26 @@ public class ChangeImplementation implements ChangeInterface {
         System.out.println("Received ddel2 message for key=" + key + " deleting");
         keyLocks.get(key).unlock();
         getMap(type).remove(key);
-
-        keyLocks.remove(key);
+        Lock lock = keyLocks.get(key);
+        if (lock != null) {
+            lock.unlock();
+        }
         res = "delete key=" + key;
-
         return res;
     }
 
     private String handleDeleteAbort(String key) {
         String res = "";
         Lock lockedObject = keyLocks.get(key);
-        if (keyLocks.containsKey(key)) {
-            System.out.println("Received ddelabort message for key=" + key + " unlocking");
-            lockedObject.unlock();
+        if (lockedObject instanceof ReentrantLock) {
+            ReentrantLock lock = (ReentrantLock) lockedObject;
+            if (lockedObject != null && lock.isHeldByCurrentThread()) {
+                lockedObject.unlock();
+                keyLocks.remove(key);
+                res = "delete key=" + key + " aborted";
+            }
         }
-        res = "delete key=" + key + " aborted";
         return res;
-
     }
 
     @Override
@@ -347,8 +366,6 @@ public class ChangeImplementation implements ChangeInterface {
     private ConcurrentHashMap<String, String> getMap(String type) {
         if ("tcp".equals(type)) {
             return Mapdata.tcpmap;
-        } else if ("udp".equals(type)) {
-            return Mapdata.udpmap;
         } else {
             throw new IllegalArgumentException("Unknown type: " + type);
         }
