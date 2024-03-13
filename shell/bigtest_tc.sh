@@ -1,5 +1,5 @@
-server=localhost
-port=4321
+server=172.17.0.3
+port=1234
 java -jar GenericNode.jar tc $server $port put mD7 booLeejae8ne0lahgoos
 java -jar GenericNode.jar tc $server $port put 1VB ahghukooy8ooYi7eeChe
 java -jar GenericNode.jar tc $server $port put 8CX eK8zae6LaeTh2Niijeih
