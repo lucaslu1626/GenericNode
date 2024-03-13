@@ -2,6 +2,7 @@ package mapdata;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.InetAddress;
@@ -20,12 +21,18 @@ public class ChangeImplementation implements ChangeInterface {
     private final String membershipServerAddr;
     private final static int MEMBERSHIP_SERVER_PORT = 4410;
     private final static int MAX_TRANSACTION_ATTEMPTS = 10;
+    private final int port;
     private ConcurrentHashMap<String, String> memberMap = new ConcurrentHashMap<String, String>();
 
     public ChangeImplementation(int port, String membershipServerAddr) {
         this.membershipServerAddr = membershipServerAddr;
         this.port = port;
-        updateMemberMapFromFile();
+        if (membershipServerAddr != null && membershipServerAddr.length() > 0){
+
+        } else {
+            updateMemberMapFromFile();
+
+        }
     }
 
     @Override
@@ -203,6 +210,7 @@ public class ChangeImplementation implements ChangeInterface {
         String res = "";
         Lock lock = keyLocks.computeIfAbsent(key, k -> new ReentrantLock());
         if (lock.tryLock()) {
+            
             res = "ok " + key;
         } else {
             res = "abort";
@@ -328,7 +336,7 @@ public class ChangeImplementation implements ChangeInterface {
     private String handleDeletePhaseTwo(String key, String type) {
         String res = "";
         System.out.println("Received ddel2 message for key=" + key + " deleting");
-        keyLocks.get(key).unlock();
+        //keyLocks.get(key).unlock();
         getMap(type).remove(key);
         Lock lock = keyLocks.get(key);
         if (lock != null) {
@@ -366,6 +374,35 @@ public class ChangeImplementation implements ChangeInterface {
             e.printStackTrace();
         }
     }
+
+    private void updateMemberMapFromFile() {
+        Thread updateThread = new Thread(() -> {
+            while (true) {
+                memberMap.clear();
+                try (BufferedReader br = new BufferedReader(new FileReader("../tmp/nodes.cfg"))) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        String[] addressAndPort = line.split(":");
+                        String address = addressAndPort[0];
+                        String sourcePort = addressAndPort[1];
+                        String myIP = InetAddress.getLocalHost().getHostAddress();
+                        if (!address.equals(myIP) || !sourcePort.equals(String.valueOf(this.port))) {
+                            memberMap.put(address, sourcePort);
+                            // print out the membership list
+                            System.out.println("Membership list: " + memberMap);
+                        }
+                    }
+                    
+                    Thread.sleep(10000);
+                } catch (Exception e) {
+                    Thread.currentThread().interrupt();
+                    e.printStackTrace();
+                }
+                
+            }
+        });
+        updateThread.start();
+    }   
 
     private ConcurrentHashMap<String, String> getMap(String type) {
         if ("tcp".equals(type)) {
